@@ -26,7 +26,7 @@ async function generateAccountNumber() {
 
 /* Open the standard set of accounts for a newly registered client. */
 async function openAccountsFor(userId) {
-  const kinds = ['checking', 'savings', 'investment'];
+  const kinds = ['cash', 'brokerage', 'retirement'];
   const accounts = [];
   for (const kind of kinds) {
     const def = ACCOUNT_DEFAULTS[kind];
@@ -42,7 +42,8 @@ async function openAccountsFor(userId) {
   return Account.insertMany(accounts);
 }
 
-const primaryAccount = (userId) => Account.findOne({ user: userId, kind: 'checking' });
+/* Cash is the settlement account — everything funds from and returns to it. */
+const primaryAccount = (userId) => Account.findOne({ user: userId, kind: 'cash' });
 
 /* Credit an account and write the matching ledger row. */
 async function credit(account, amount, entry) {
@@ -78,15 +79,6 @@ async function debit(account, amount, entry) {
   });
 }
 
-/* Standard amortising payment: P·r / (1 − (1+r)^−n). Interest-free
-   products (apr 0) fall back to straight-line repayment. */
-function monthlyPayment(principal, apr, months) {
-  if (!principal || !months) return 0;
-  const r = apr / 100 / 12;
-  if (r === 0) return round2(principal / months);
-  return round2((principal * r) / (1 - Math.pow(1 + r, -months)));
-}
-
 /* Simple annualised accrual, prorated across the elapsed term. Flexible
    mandates (termMonths 0) accrue on the same basis with no end date. */
 function accruedOn(investment) {
@@ -101,6 +93,5 @@ module.exports = {
   primaryAccount,
   credit,
   debit,
-  monthlyPayment,
   accruedOn,
 };

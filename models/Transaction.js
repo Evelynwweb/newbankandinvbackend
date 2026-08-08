@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const TYPES = ['deposit', 'withdraw', 'transfer', 'interest', 'investment', 'card', 'loan', 'bonus', 'referral', 'fee'];
+const TYPES = ['deposit', 'withdraw', 'transfer', 'interest', 'investment', 'trade', 'dividend', 'referral', 'fee'];
 const STATUSES = ['pending', 'processing', 'completed', 'failed', 'reversed'];
 
 const transactionSchema = new mongoose.Schema(

@@ -3,7 +3,7 @@ const router = express.Router();
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
 const Investment = require('../models/Investment');
-const Loan = require('../models/Loan');
+const Holding = require('../models/Holding');
 const { protect } = require('../middleware/auth');
 const { round2 } = require('../utils/banking');
 const { getSettings } = require('../config/settings');
@@ -37,14 +37,14 @@ function buildSeries(currentValue, txns, windowMs, points) {
 }
 
 const ACCOUNT_COLOR = {
-  checking: 'var(--gold-bright)',
-  savings: 'var(--ember)',
-  investment: 'var(--rose)',
+  cash: 'var(--accent)',
+  brokerage: 'var(--accent-warm)',
+  retirement: 'var(--gold-leaf)',
 };
 const ACCOUNT_LABEL = {
-  checking: 'Cash & checking',
-  savings: 'Savings',
-  investment: 'Investments',
+  cash: 'Cash & liquidity',
+  brokerage: 'Brokerage',
+  retirement: 'Retirement',
 };
 
 // @route   GET /api/dashboard/overview
@@ -52,13 +52,13 @@ const ACCOUNT_LABEL = {
 router.get('/overview', protect, async (req, res) => {
   try {
     const userId = req.user._id;
-    const [accounts, txns, activity, investments, loans, settings] = await Promise.all([
+    const [accounts, txns, activity, investments, holdings, settings] = await Promise.all([
       Account.find({ user: userId }).lean(),
       Transaction.find({ user: userId, status: 'completed' })
         .sort({ createdAt: 1 }).select('amount createdAt').lean(),
       Transaction.find({ user: userId }).sort({ createdAt: -1 }).limit(7).lean(),
       Investment.find({ user: userId, status: 'active' }).lean(),
-      Loan.find({ user: userId, status: 'active' }).lean(),
+      Holding.find({ user: userId }).lean(),
       getSettings(),
     ]);
 
@@ -78,7 +78,7 @@ router.get('/overview', protect, async (req, res) => {
         : last > 0 ? 100 : 0;
     }
 
-    const holdings = accounts
+    const allocation = accounts
       .map((a) => ({
         sym: ACCOUNT_LABEL[a.kind] || a.name,
         value: round2(a.balance),
@@ -88,13 +88,13 @@ router.get('/overview', protect, async (req, res) => {
 
     res.json({
       accountValue,
-      balance: round2(byKind('checking')?.balance || 0),
-      savingsBalance: round2(byKind('savings')?.balance || 0),
-      investedBalance: round2(byKind('investment')?.balance || 0),
+      balance: round2(byKind('cash')?.balance || 0),
+      brokerageBalance: round2(byKind('brokerage')?.balance || 0),
+      retirementBalance: round2(byKind('retirement')?.balance || 0),
+      holdingsValue: round2(holdings.reduce((s, h) => s + h.units * h.price, 0)),
       profitBalance,
       totalInvested: round2(investments.reduce((s, i) => s + i.principal, 0)),
       activeInvestments: investments.length,
-      outstandingDebt: round2(loans.reduce((s, l) => s + l.outstanding, 0)),
       referralEarnings: round2(req.user.referralEarnings || 0),
       interestYtd: round2(
         activity.filter((a) => a.type === 'interest' && a.amount > 0).reduce((s, a) => s + a.amount, 0)
@@ -105,7 +105,7 @@ router.get('/overview', protect, async (req, res) => {
       minWithdrawal: settings.minWithdrawal,
       performance,
       changePct,
-      holdings,
+      holdings: allocation,
       activity: activity.map((a) => ({
         _id: a._id,
         type: a.type,

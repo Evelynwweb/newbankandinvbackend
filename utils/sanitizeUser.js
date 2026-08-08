@@ -20,6 +20,21 @@ module.exports = function sanitizeUser(user) {
       documentType: user.kyc?.documentType || null,
       rejectionReason: user.kyc?.rejectionReason || null,
     },
+    bankAccount: user.bankAccount?.accountNumber
+      ? {
+          accountName: user.bankAccount.accountName,
+          bankName: user.bankAccount.bankName,
+          // Only the tail ever leaves the server.
+          accountNumberLast4: String(user.bankAccount.accountNumber).slice(-4),
+          routingNumber: user.bankAccount.routingNumber,
+          swiftCode: user.bankAccount.swiftCode,
+          bankAddress: user.bankAccount.bankAddress,
+          homeAddress: user.bankAccount.homeAddress,
+          currency: user.bankAccount.currency,
+          verified: !!user.bankAccount.verified,
+          updatedAt: user.bankAccount.updatedAt || null,
+        }
+      : null,
     settings: user.settings,
     createdAt: user.createdAt,
   };

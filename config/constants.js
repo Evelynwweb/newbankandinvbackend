@@ -1,80 +1,133 @@
 /* ============================================================
    Platform economics and product catalogue.
 
-   MIN_* values here are only the seed defaults for the
-   admin-editable Setting document (config/settings.js) — the live
-   values come from there.
+   Aurivest is an investment platform. The only banking surface it
+   keeps is the pair of wire-instruction blocks used to move cash in
+   and out — see models/BankInstruction.js and the client's own bank
+   details on models/User.js. There are no cards, no cheque accounts
+   and no consumer lending.
 
-   PLAN_CATALOGUE and LOAN_PRODUCTS must stay in step with the copy on
-   the marketing site (invandbankfrontend/src/pages/topics.js and
-   PricingPage.jsx). The frontend renders whatever this returns.
+   PRODUCT_FAMILIES is the single source of truth for the product
+   taxonomy: the marketing site, the Invest screen and the admin panel
+   all render from it.
    ============================================================ */
-module.exports = {
-  MIN_DEPOSIT: 50,
-  MIN_WITHDRAWAL: 25,
-  MIN_TRANSFER: 10,
-  REFERRAL_REWARD: 75,        // flat USD per referred client who funds an account
-  OVERDRAFT_ALLOWED: false,   // balances may never go negative
 
-  // Deposit-account rates, applied when an account is opened.
+module.exports = {
+  MIN_DEPOSIT: 100,
+  MIN_WITHDRAWAL: 100,
+  MIN_TRANSFER: 50,
+  REFERRAL_REWARD: 100,
+
+  /* The three account types a client holds. Cash funds everything;
+     brokerage holds self-directed and ETF positions; retirement is
+     the tax-advantaged wrapper. */
   ACCOUNT_DEFAULTS: {
-    checking: { name: 'Everyday Checking', apy: 0.75 },
-    savings: { name: 'Reserve Savings', apy: 4.65 },
-    investment: { name: 'Wealth Portfolio', apy: 0 },
+    cash: { name: 'Cash Management', apy: 4.65 },
+    brokerage: { name: 'Brokerage Account', apy: 0 },
+    retirement: { name: 'Retirement Account', apy: 0 },
   },
 
-  /* Investment mandates. `termMonths: 0` means flexible / no lock-up.
-     `rate` is an annualised target (or APY for the flexible savings tier). */
-  PLAN_CATALOGUE: [
+  /* ------------------------------------------------------------
+     PRODUCT FAMILIES
+     `rate` is an annualised target; `termMonths: 0` means no lock-up.
+     `kind` drives how the app treats a subscription:
+        'yield'    — accrues at a stated rate (cash, fixed income)
+        'managed'  — a mandate the committee runs (ETF portfolios)
+        'holding'  — client holds positions (self-directed, crypto)
+        'wrapper'  — a retirement or trust wrapper, not a return
+        'facility' — margin, a line rather than a deposit
+     ------------------------------------------------------------ */
+  PRODUCT_FAMILIES: [
     {
-      id: 'reserve', name: 'Reserve Savings', horizon: 'Flexible', termMonths: 0,
-      rate: 4.65, min: 100, risk: 'Insured',
-      blurb: 'High-yield insured savings. Withdraw any day, no penalty.',
+      id: 'cash',
+      name: 'Cash & Liquidity',
+      blurb: 'Somewhere for money that has to stay reachable — still earning while it waits.',
+      account: 'cash',
+      products: [
+        { id: 'hy-cash', name: 'High-Yield Cash Management', kind: 'yield', rate: 4.65, termMonths: 0, min: 100, risk: 'Very low', blurb: 'Withdraw any day, no penalty. Interest credited monthly.' },
+        { id: 'mmf', name: 'Money Market Fund', kind: 'yield', rate: 5.02, termMonths: 0, min: 1000, risk: 'Very low', blurb: 'A government money market fund, priced daily, settling T+1.' },
+        { id: 'treasury', name: 'Treasury-Backed Account', kind: 'yield', rate: 5.18, termMonths: 3, min: 1000, risk: 'Very low', blurb: 'Held directly in short-dated government bills, rolled at maturity.' },
+      ],
     },
     {
-      id: 'treasury', name: 'Treasury Ladder', horizon: '6 Months', termMonths: 6,
-      rate: 5.1, min: 1000, risk: 'Very low',
-      blurb: 'A laddered government-bill portfolio rolled every 4 weeks.',
+      id: 'fixed-income',
+      name: 'Fixed Income',
+      blurb: 'Predictable income with a defined maturity, for the part of a portfolio that should not surprise you.',
+      account: 'brokerage',
+      products: [
+        { id: 'bond-ladder', name: 'Bond Ladder', kind: 'yield', rate: 5.45, termMonths: 12, min: 5000, risk: 'Low', blurb: 'Staggered maturities so a rung comes due every quarter.' },
+        { id: 'muni', name: 'Municipal Bonds', kind: 'yield', rate: 4.28, termMonths: 24, min: 10000, risk: 'Low', blurb: 'Investment-grade municipal issues, generally tax-advantaged.' },
+        { id: 'preferred', name: 'Preferred Stock', kind: 'yield', rate: 6.6, termMonths: 12, min: 5000, risk: 'Moderate', blurb: 'Senior to common equity, with a fixed dividend schedule.' },
+      ],
     },
     {
-      id: 'balanced', name: 'Balanced Portfolio', horizon: '12 Months', termMonths: 12,
-      rate: 7.8, min: 2500, risk: 'Moderate',
-      blurb: '60/40 global equity and investment-grade credit, rebalanced quarterly.',
+      id: 'portfolios',
+      name: 'Portfolios',
+      blurb: 'ETF-built portfolios, run for you or run by you — the same shelf either way.',
+      account: 'brokerage',
+      products: [
+        { id: 'core-etf', name: 'Core ETF Portfolio', kind: 'managed', rate: 7.8, termMonths: 12, min: 2500, risk: 'Moderate', blurb: '60/40 global equity and investment-grade credit, rebalanced quarterly.' },
+        { id: 'growth-etf', name: 'Growth ETF Portfolio', kind: 'managed', rate: 11.2, termMonths: 24, min: 10000, risk: 'Elevated', blurb: 'Equity-tilted for capital with a horizon beyond two years.' },
+        { id: 'self-directed', name: 'Self-Directed Brokerage', kind: 'holding', rate: 0, termMonths: 0, min: 500, risk: 'Self-managed', blurb: 'Your own positions, your own calls. Commission-free on US equities and ETFs.' },
+        { id: 'fractional', name: 'Fractional Shares', kind: 'holding', rate: 0, termMonths: 0, min: 5, risk: 'Self-managed', blurb: 'Own a slice of any listed name from five dollars up.' },
+      ],
     },
     {
-      id: 'growth', name: 'Growth Portfolio', horizon: '24 Months', termMonths: 24,
-      rate: 11.2, min: 10000, risk: 'Elevated',
-      blurb: 'Equity-tilted mandate for long-horizon capital with quarterly reviews.',
+      id: 'retirement',
+      name: 'Retirement',
+      blurb: 'The tax-advantaged wrappers, opened and administered without the paperwork.',
+      account: 'retirement',
+      products: [
+        { id: 'trad-ira', name: 'Traditional IRA', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 500, risk: 'Moderate', blurb: 'Pre-tax contributions, taxed on withdrawal in retirement.' },
+        { id: 'roth-ira', name: 'Roth IRA', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 500, risk: 'Moderate', blurb: 'Post-tax contributions; qualified withdrawals come out tax-free.' },
+        { id: 'sep-ira', name: 'SEP IRA', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 1000, risk: 'Moderate', blurb: 'For the self-employed and small firms, with higher contribution room.' },
+        { id: 'simple-ira', name: 'SIMPLE IRA', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 1000, risk: 'Moderate', blurb: 'A straightforward employer plan for teams under 100 people.' },
+        { id: 'rollover-401k', name: '401(k) Rollover', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 0, risk: 'Moderate', blurb: 'We chase the outgoing provider so an old plan stops drifting.' },
+        { id: 'solo-401k', name: 'Solo 401(k)', kind: 'wrapper', rate: 7.4, termMonths: 0, min: 1000, risk: 'Moderate', blurb: 'For owner-only businesses, with both employer and employee room.' },
+      ],
     },
     {
-      id: 'private', name: 'Private Wealth Mandate', horizon: '36 Months', termMonths: 36,
-      rate: 14.5, min: 50000, risk: 'High',
-      blurb: 'Bespoke multi-asset mandate with a named advisor and estate planning.',
+      id: 'alternatives',
+      name: 'Higher-Yield Add-Ons',
+      blurb: 'Where the returns get larger and so does the range of outcomes. Sized as a slice, never the whole.',
+      account: 'brokerage',
+      products: [
+        { id: 'margin', name: 'Margin Lending', kind: 'facility', rate: 8.75, termMonths: 0, min: 5000, risk: 'High', blurb: 'Borrow against eligible positions from 8.75%. Positions can be sold to meet a call.' },
+        { id: 'real-estate', name: 'Private Real Estate', kind: 'yield', rate: 12.4, termMonths: 36, min: 25000, risk: 'High', blurb: 'Income-producing property held through a private vehicle. Illiquid.' },
+        { id: 'private-credit', name: 'Private Credit', kind: 'yield', rate: 13.8, termMonths: 24, min: 25000, risk: 'High', blurb: 'Direct lending to mid-market borrowers. Capital is locked for the term.' },
+        { id: 'crypto', name: 'Crypto Trading & Custody', kind: 'holding', rate: 0, termMonths: 0, min: 100, risk: 'Very high', blurb: 'Major digital assets held in segregated institutional custody.' },
+      ],
+    },
+    {
+      id: 'private',
+      name: 'Private Access',
+      blurb: 'The premium tier, for balances and situations that have outgrown a product sheet.',
+      account: 'brokerage',
+      premium: true,
+      products: [
+        { id: 'estate', name: 'Estate Planning Tools', kind: 'wrapper', rate: 0, termMonths: 0, min: 50000, risk: 'n/a', blurb: 'Wills, beneficiary alignment and the tax consequences mapped before you sign.' },
+        { id: 'trust', name: 'Trust Account Services', kind: 'wrapper', rate: 0, termMonths: 0, min: 100000, risk: 'n/a', blurb: 'Trust formation and administration, with a named officer on the account.' },
+      ],
     },
   ],
 
-  LOAN_PRODUCTS: [
-    { id: 'personal', name: 'Personal Loan', apr: 8.9, maxAmount: 50000, termMonths: 36, blurb: 'Fixed-rate, no collateral, funded same day once approved.' },
-    { id: 'auto', name: 'Auto Loan', apr: 6.4, maxAmount: 120000, termMonths: 60, blurb: 'Competitive rates on new and used vehicles up to 7 years old.' },
-    { id: 'mortgage', name: 'Home Mortgage', apr: 5.75, maxAmount: 1500000, termMonths: 360, blurb: '30-year fixed with no lender origination fee on Aurivest accounts.' },
-    { id: 'business', name: 'Business Line', apr: 9.75, maxAmount: 250000, termMonths: 24, blurb: 'Revolving credit that draws and repays with your cash cycle.' },
+  /* Symbols the self-directed, fractional and crypto sleeves can hold.
+     Prices are admin-maintained — the platform carries no market feed. */
+  INSTRUMENTS: [
+    { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', kind: 'etf', price: 512.40 },
+    { symbol: 'VTI', name: 'Vanguard Total Market ETF', kind: 'etf', price: 284.15 },
+    { symbol: 'AGG', name: 'iShares Core US Aggregate Bond', kind: 'etf', price: 98.72 },
+    { symbol: 'AAPL', name: 'Apple Inc.', kind: 'equity', price: 231.80 },
+    { symbol: 'MSFT', name: 'Microsoft Corp.', kind: 'equity', price: 428.60 },
+    { symbol: 'NVDA', name: 'NVIDIA Corp.', kind: 'equity', price: 138.25 },
+    { symbol: 'BRK.B', name: 'Berkshire Hathaway B', kind: 'equity', price: 468.90 },
+    { symbol: 'BTC', name: 'Bitcoin', kind: 'crypto', price: 68420.00 },
+    { symbol: 'ETH', name: 'Ethereum', kind: 'crypto', price: 3285.50 },
   ],
 
-  /* Transfer rails for money leaving the bank. Fees are quoted to the client
-     before confirmation — see routes/accounts.js. */
-  TRANSFER_RAILS: [
-    { id: 'ACH', label: 'ACH transfer', fee: 0, speed: '1–2 business days' },
-    { id: 'Wire', label: 'Same-day wire', fee: 15, speed: 'Today, by 5pm' },
-    { id: 'SWIFT', label: 'International wire', fee: 25, speed: '2–4 business days' },
-  ],
-
-  /* How clients can fund an account. Seeded into the PaymentMethod
-     collection on boot; admins edit the real receiving details in the
-     admin panel and those edits stick. */
-  PAYMENT_RAILS: [
-    { label: 'Linked bank', kind: 'bank', instructions: 'Pull funds from a bank account linked to Aurivest.', processing: '1–2 business days', scope: 'both' },
-    { label: 'Incoming wire', kind: 'wire', instructions: 'Aurivest Bank & Trust · Routing 021000021', processing: 'Same business day', scope: 'both' },
-    { label: 'Direct deposit', kind: 'bank', instructions: 'Route your salary here and get paid up to two days early.', processing: 'Up to 2 days early', scope: 'deposit' },
-    { label: 'Mobile check', kind: 'check', instructions: 'Photograph a paper check and deposit it from your phone.', processing: '1–3 business days', scope: 'deposit' },
+  /* The only banking left in the product: how cash gets in and out. */
+  FUNDING_RAILS: [
+    { id: 'wire', label: 'Bank wire', speed: 'Same business day', fee: 0 },
+    { id: 'ach', label: 'ACH transfer', speed: '1–2 business days', fee: 0 },
   ],
 };

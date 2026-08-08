@@ -28,7 +28,7 @@ async function resolveAccount(user, accountId) {
     err.status = 400;
     throw err;
   }
-  if (account.kind === 'investment') {
+  if (account.kind !== 'cash') {
     const err = new Error('Use a deposit account — mandates are funded from the Invest screen.');
     err.status = 400;
     throw err;

@@ -20,7 +20,7 @@ exports.welcomeEmail = (user) =>
     subject: 'Your Aurivest account is open',
     preheader: 'Welcome aboard — your accounts are ready.',
     heading: `Welcome to Aurivest, ${first(user)}!`,
-    intro: 'Your checking, savings and investment accounts are open and ready to fund. Reserve Savings starts earning 4.65% the day money lands in it.',
+    intro: 'Your cash, brokerage and retirement accounts are open and ready to fund. Cash Management earns 4.65% from the day money lands in it.',
     content: button('Open my dashboard', dash),
     outro: 'If you did not open an Aurivest account, contact us immediately.',
   });
@@ -123,28 +123,6 @@ exports.investmentEmail = (user, { planName, principal, rate, maturesAt }) =>
       ['Matures', maturesAt ? fmtDate(maturesAt) : 'Flexible — no lock-up'],
     ]) + button('View my portfolio', `${dash}/portfolio`),
     outro: 'Target rates are objectives, not guarantees. Market-linked mandates are not deposits, are not insured, and may lose value.',
-  });
-
-exports.loanDecisionEmail = (user, loan, approved, reason) =>
-  sendMail({
-    to: user.email,
-    subject: `Your ${loan.product} application was ${approved ? 'approved' : 'declined'}`,
-    preheader: `A decision on your ${loan.product} application.`,
-    heading: approved ? 'Application approved' : 'Application declined',
-    intro: approved
-      ? `Hi ${first(user)}, good news — your ${loan.product} has been approved and the funds are in your checking account.`
-      : `Hi ${first(user)}, we weren't able to approve your ${loan.product} application this time.`,
-    content: detailTable([
-      ['Product', loan.product],
-      ['Amount', fmt(loan.principal)],
-      ['Rate', `${loan.apr}% APR`],
-      ['Term', `${loan.termMonths} months`],
-      ...(approved ? [['Monthly payment', fmt(loan.monthlyPayment)]] : []),
-      ...(!approved && reason ? [['Reason', reason]] : []),
-    ]),
-    outro: approved
-      ? 'Your first payment is due one month from today. There is no penalty for repaying early.'
-      : 'You\'re welcome to apply again once your circumstances change. Our team can talk you through what would help.',
   });
 
 /* ---------- compliance ---------- */

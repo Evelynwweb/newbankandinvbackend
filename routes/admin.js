@@ -4,15 +4,15 @@ const User = require('../models/User');
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
 const Investment = require('../models/Investment');
-const Loan = require('../models/Loan');
-const Card = require('../models/Card');
+const BankInstruction = require('../models/BankInstruction');
+const Holding = require('../models/Holding');
 const PaymentMethod = require('../models/PaymentMethod');
 const SupportMessage = require('../models/SupportMessage');
 const { protect, admin } = require('../middleware/auth');
 const sanitizeUser = require('../utils/sanitizeUser');
-const { round2, credit, debit, primaryAccount, monthlyPayment, accruedOn, openAccountsFor } = require('../utils/banking');
+const { round2, credit, debit, primaryAccount, accruedOn, openAccountsFor } = require('../utils/banking');
 const { getSettings, updateSettings } = require('../config/settings');
-const { LOAN_PRODUCTS } = require('../config/constants');
+const { INSTRUMENTS } = require('../config/constants');
 const emails = require('../utils/emails');
 
 // Every route below is admin-only.
@@ -29,18 +29,17 @@ router.get('/stats', async (req, res) => {
   try {
     const [
       clients, activeClients, accounts, pendingDeposits, pendingWithdrawals,
-      pendingLoans, pendingKyc, openTickets, investments, loans, recent,
+      pendingKyc, openTickets, investments, holdings, recent,
     ] = await Promise.all([
       User.countDocuments({ role: 'client' }),
       User.countDocuments({ role: 'client', isActive: true }),
       Account.find().select('kind balance').lean(),
       Transaction.countDocuments({ type: 'deposit', status: 'pending' }),
       Transaction.countDocuments({ type: 'withdraw', status: 'pending' }),
-      Loan.countDocuments({ status: 'pending' }),
       User.countDocuments({ 'kyc.status': 'pending' }),
       SupportMessage.countDocuments({ status: 'open' }),
       Investment.find({ status: 'active' }).select('principal').lean(),
-      Loan.find({ status: 'active' }).select('outstanding').lean(),
+      Holding.find().select("units price").lean(),
       Transaction.find().sort({ createdAt: -1 }).limit(10).populate('user', 'name email').lean(),
     ]);
 
@@ -50,18 +49,16 @@ router.get('/stats', async (req, res) => {
       clients,
       activeClients,
       // round2 again after adding two already-rounded sums, or the cents drift
-      deposits: round2(byKind('checking') + byKind('savings')),
-      checkingTotal: byKind('checking'),
-      savingsTotal: byKind('savings'),
-      investedTotal: byKind('investment'),
+      cashTotal: byKind('cash'),
+      brokerageTotal: byKind('brokerage'),
+      retirementTotal: byKind('retirement'),
+      holdingsValue: round2(holdings.reduce((s, h) => s + h.units * h.price, 0)),
       aum: round2(accounts.reduce((s, a) => s + a.balance, 0)),
       mandates: investments.length,
       mandatePrincipal: round2(investments.reduce((s, i) => s + i.principal, 0)),
-      outstandingCredit: round2(loans.reduce((s, l) => s + l.outstanding, 0)),
       queue: {
         deposits: pendingDeposits,
         withdrawals: pendingWithdrawals,
-        loans: pendingLoans,
         kyc: pendingKyc,
         tickets: openTickets,
       },
@@ -122,12 +119,11 @@ router.get('/users/:id', async (req, res) => {
     const user = await User.findById(req.params.id).lean();
     if (!user) return res.status(404).json({ message: 'Client not found' });
 
-    const [accounts, transactions, investments, loans, cards] = await Promise.all([
+    const [accounts, transactions, investments, holdings] = await Promise.all([
       Account.find({ user: user._id }).lean(),
       Transaction.find({ user: user._id }).sort({ createdAt: -1 }).limit(50).lean(),
       Investment.find({ user: user._id }).sort({ createdAt: -1 }).lean(),
-      Loan.find({ user: user._id }).sort({ createdAt: -1 }).lean(),
-      Card.find({ user: user._id }).lean(),
+      Holding.find({ user: user._id }).sort({ symbol: 1 }).lean(),
     ]);
 
     res.json({
@@ -135,8 +131,7 @@ router.get('/users/:id', async (req, res) => {
       accounts,
       transactions: transactions.map(({ proof, ...t }) => ({ ...t, hasProof: !!proof })),
       investments: investments.map((i) => ({ ...i, accrued: accruedOn(i) })),
-      loans,
-      cards,
+      holdings: holdings.map((h) => ({ ...h, marketValue: round2(h.units * h.price) })),
     });
   } catch (err) {
     console.error('Admin user detail error:', err);
@@ -530,72 +525,7 @@ router.post('/kyc/:id/decide', async (req, res) => {
 });
 
 /* ============================================================
-   Loans
-   ============================================================ */
-
-// @route   GET /api/admin/loans
-router.get('/loans', async (req, res) => {
-  try {
-    const { status } = req.query;
-    const query = status && status !== 'all' ? { status } : {};
-    const loans = await Loan.find(query).sort({ createdAt: -1 }).limit(300)
-      .populate('user', 'name email').lean();
-    res.json(loans);
-  } catch (err) {
-    console.error('Admin loans error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// @route   POST /api/admin/loans/:id/decide
-// @desc    Approving draws the funds down into the client's checking account
-router.post('/loans/:id/decide', async (req, res) => {
-  try {
-    const { approve, reason } = req.body;
-    const loan = await Loan.findById(req.params.id);
-    if (!loan) return res.status(404).json({ message: 'Application not found' });
-    if (loan.status !== 'pending') {
-      return res.status(409).json({ message: `That application is already ${loan.status}.` });
-    }
-
-    const client = await User.findById(loan.user);
-
-    if (approve) {
-      const account = await primaryAccount(loan.user);
-      if (!account) return res.status(400).json({ message: 'The client has no checking account.' });
-
-      const product = LOAN_PRODUCTS.find((p) => p.id === loan.productId);
-      loan.monthlyPayment = monthlyPayment(loan.principal, loan.apr, loan.termMonths);
-      loan.outstanding = loan.principal;
-      loan.status = 'active';
-      loan.decidedAt = new Date();
-      await loan.save();
-
-      await credit(account, loan.principal, {
-        type: 'loan',
-        label: `${loan.product} drawn down`,
-        detail: `${loan.apr}% APR over ${loan.termMonths} months${product ? '' : ' (legacy product)'}`,
-        reviewedAt: new Date(),
-        reviewedBy: req.user._id,
-      });
-    } else {
-      loan.status = 'rejected';
-      loan.decidedAt = new Date();
-      loan.rejectionReason = String(reason || '').slice(0, 300);
-      await loan.save();
-    }
-
-    if (client) await emails.loanDecisionEmail(client, loan, !!approve, reason);
-    res.json(loan);
-  } catch (err) {
-    if (err.status === 400) return res.status(400).json({ message: err.message });
-    console.error('Loan decide error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/* ============================================================
-   Mandates
+   Positions
    ============================================================ */
 
 // @route   GET /api/admin/investments
@@ -713,6 +643,54 @@ router.patch('/support/:id', async (req, res) => {
     res.json(msg);
   } catch (err) {
     console.error('Support update error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/* ============================================================
+   Receiving wires — the inbound funding details clients are shown
+   ============================================================ */
+
+router.get('/bank-instructions', async (req, res) => {
+  try {
+    res.json(await BankInstruction.find().sort({ sortOrder: 1, createdAt: 1 }).lean());
+  } catch (err) {
+    console.error('Wires list error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/bank-instructions', async (req, res) => {
+  try {
+    const { label, accountName, bankName, accountNumber } = req.body;
+    if (!label || !accountName || !bankName || !accountNumber) {
+      return res.status(400).json({ message: 'Label, account name, bank name and account number are required.' });
+    }
+    res.status(201).json(await BankInstruction.create(req.body));
+  } catch (err) {
+    console.error('Wire create error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.patch('/bank-instructions/:id', async (req, res) => {
+  try {
+    const updated = await BankInstruction.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!updated) return res.status(404).json({ message: 'Route not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Wire update error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.delete('/bank-instructions/:id', async (req, res) => {
+  try {
+    const removed = await BankInstruction.findByIdAndDelete(req.params.id);
+    if (!removed) return res.status(404).json({ message: 'Route not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Wire delete error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
