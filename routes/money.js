@@ -3,7 +3,7 @@ const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
 const Wallet = require('../models/Wallet');
 const { protect, kycSubmitted, kycVerified } = require('../middleware/auth');
-const { round2, credit, debit, primaryAccount } = require('../utils/banking');
+const { round2, debit, primaryAccount } = require('../utils/banking');
 const { getSettings } = require('../config/settings');
 const emails = require('../utils/emails');
 
@@ -15,6 +15,11 @@ const emails = require('../utils/emails');
 
 const deposits = express.Router();
 const withdrawals = express.Router();
+
+/* Proof images travel as base64 data URLs in the JSON body. Base64 inflates
+   by ~4/3, so this caps the original file at roughly 4MB — comfortably inside
+   the 8mb express.json limit in server.js. */
+const MAX_PROOF_CHARS = 5_600_000;
 
 /* Resolve the account a movement applies to: the one named in the body,
    or the client's checking account. Never an investment account — mandates
@@ -50,12 +55,13 @@ function fail(res, err, context) {
 
 /* ============================================================
    POST /api/deposits
-   Small deposits clear immediately; larger ones queue for an admin
-   (settings.autoApproveDepositUnder, 0 = always review).
+   The client sends crypto to a published wallet, then files the receipt
+   here. Every deposit queues for review — a reviewer opens the proof in
+   the admin panel and approving it is what credits the account.
    ============================================================ */
 deposits.post('/', protect, kycSubmitted, async (req, res) => {
   try {
-    const { amount, walletId, txHash, accountId, proof } = req.body;
+    const { amount, walletId, reference, accountId, proof } = req.body;
     const settings = await getSettings();
     const value = round2(amount);
 
@@ -66,47 +72,37 @@ deposits.post('/', protect, kycSubmitted, async (req, res) => {
     const account = await resolveAccount(req.user, accountId);
     const wallet = walletId ? await Wallet.findById(walletId) : null;
     const method = wallet ? `${wallet.asset} · ${wallet.network}` : 'Crypto transfer';
-    if (!txHash || String(txHash).trim().length < 10) {
-      return res.status(400).json({ message: 'Paste the transaction hash so we can verify the transfer on-chain.' });
+
+    // The proof of payment is the whole basis for approval, so it is required
+    // and has to actually be an image the reviewer can open.
+    if (!proof || !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(proof)) {
+      return res.status(400).json({ message: 'Attach a screenshot or photo of your payment receipt.' });
+    }
+    if (proof.length > MAX_PROOF_CHARS) {
+      return res.status(413).json({ message: 'That image is too large — please upload one under 4MB.' });
     }
 
-    // On-chain credits are never auto-approved: the hash has to be checked.
-    const autoClear = false;
-
-    if (autoClear) {
-      await credit(account, value, {
-        type: 'deposit',
-        label: 'Deposit received',
-        detail: `${method} → ${account.name}`,
-        method,
-        reference: String(txHash).trim().slice(0, 120),
-        proof: proof || null,
-        proofUploadedAt: proof ? new Date() : null,
-      });
-    } else {
-      // A pending deposit must NOT move the balance — the money isn't ours
-      // until it settles. Approving it in the admin panel is what credits it.
-      await Transaction.create({
-        user: req.user._id,
-        account: account._id,
-        type: 'deposit',
-        label: 'Deposit pending review',
-        detail: `${method} → ${account.name}`,
-        amount: value,
-        status: 'pending',
-        method,
-        proof: proof || null,
-        proofUploadedAt: proof ? new Date() : null,
-      });
-    }
+    // Never auto-credited. A reviewer opens the proof and approves it.
+    await Transaction.create({
+      user: req.user._id,
+      account: account._id,
+      type: 'deposit',
+      label: 'Deposit pending review',
+      detail: `${method} → ${account.name}`,
+      amount: value,
+      status: 'pending',
+      method,
+      reference: reference ? String(reference).trim().slice(0, 120) : '',
+      proof,
+      proofUploadedAt: new Date(),
+    });
 
     await emails.depositEmail(req.user, {
-      amount: value, method, accountName: account.name,
-      status: autoClear ? 'completed' : 'pending',
+      amount: value, method, accountName: account.name, status: 'pending',
     });
 
     const fresh = await Account.findById(account._id).lean();
-    res.status(201).json({ ok: true, account: fresh, status: autoClear ? 'completed' : 'pending' });
+    res.status(201).json({ ok: true, account: fresh, status: 'pending' });
   } catch (err) {
     fail(res, err, 'Deposit');
   }
