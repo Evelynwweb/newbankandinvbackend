@@ -3,9 +3,9 @@
 
    Aurivest is an investment platform. The only banking surface it
    keeps is the pair of wire-instruction blocks used to move cash in
-   and out — see models/BankInstruction.js and the client's own bank
-   details on models/User.js. There are no cards, no cheque accounts
-   and no consumer lending.
+   and out — see models/Wallet.js for receiving addresses and the
+   client's own payout wallet on models/User.js. There are no cards,
+   no bank rails and no consumer lending.
 
    PRODUCT_FAMILIES is the single source of truth for the product
    taxonomy: the marketing site, the Invest screen and the admin panel
@@ -125,9 +125,21 @@ module.exports = {
     { symbol: 'ETH', name: 'Ethereum', kind: 'crypto', price: 3285.50 },
   ],
 
-  /* The only banking left in the product: how cash gets in and out. */
-  FUNDING_RAILS: [
-    { id: 'wire', label: 'Bank wire', speed: 'Same business day', fee: 0 },
-    { id: 'ach', label: 'ACH transfer', speed: '1–2 business days', fee: 0 },
+  /* Placeholder receiving wallets, inserted only when the collection is
+     empty so a fresh deploy has a Funding screen. THESE ARE NOT REAL
+     TREASURY ADDRESSES — replace every one in Admin → Receiving Wallets
+     before taking a live deposit. */
+  DEFAULT_WALLETS: [
+    { asset: 'BTC', name: 'Bitcoin', network: 'Bitcoin', address: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      confirmations: '2–3 confirmations · ~30 min', minDeposit: 100, sortOrder: 0 },
+    { asset: 'ETH', name: 'Ethereum', network: 'ERC-20', address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+      confirmations: '12 confirmations · ~5 min', minDeposit: 100, sortOrder: 1 },
+    { asset: 'USDT', name: 'Tether', network: 'TRC-20', address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE',
+      confirmations: '20 confirmations · ~3 min', minDeposit: 50, sortOrder: 2,
+      notes: 'TRC-20 only. Sending ERC-20 USDT to this address will lose the funds.' },
+    { asset: 'USDT', name: 'Tether', network: 'ERC-20', address: '0x2910543Af39abA0Cd09dBb2D50200b3E800A63D2',
+      confirmations: '12 confirmations · ~5 min', minDeposit: 100, sortOrder: 3 },
+    { asset: 'USDC', name: 'USD Coin', network: 'ERC-20', address: '0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE',
+      confirmations: '12 confirmations · ~5 min', minDeposit: 100, sortOrder: 4 },
   ],
 };

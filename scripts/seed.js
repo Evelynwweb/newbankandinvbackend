@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const connectDB = require('../config/db');
 const User = require('../models/User');
@@ -6,61 +7,74 @@ const Account = require('../models/Account');
 const Investment = require('../models/Investment');
 const Holding = require('../models/Holding');
 const Transaction = require('../models/Transaction');
-const BankInstruction = require('../models/BankInstruction');
+const Wallet = require('../models/Wallet');
 const SupportMessage = require('../models/SupportMessage');
-const { openAccountsFor, round2 } = require('../utils/banking');
-const { INSTRUMENTS } = require('../config/constants');
+const { openAccountsFor } = require('../utils/banking');
+const { INSTRUMENTS, DEFAULT_WALLETS } = require('../config/constants');
 
 /* ============================================================
-   Seeds a demo client with a realistic investment book, plus the
-   platform's receiving-wire instructions.
+   Seeds the receiving wallets, a real administrator, and an
+   optional demo client with a populated investment book.
 
-     npm run seed              add if missing
-     npm run seed -- --reset   wipe the demo client first
+     npm run seed                  wallets + admin, skip what exists
+     npm run seed -- --demo        also create the demo client
+     npm run seed -- --reset-demo  rebuild the demo client
+     npm run seed -- --admin       force a new admin password
+
+   The admin password is generated, printed once, and never stored
+   anywhere but the hashed field. Copy it when you see it.
    ============================================================ */
 
 const DEMO_EMAIL = 'demo@aurivest.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@aurivest.com';
 const daysAgo = (n) => new Date(Date.now() - n * 86400000);
 const daysAhead = (n) => new Date(Date.now() + n * 86400000);
 
-async function seedBankInstructions() {
-  if (await BankInstruction.countDocuments()) return;
-  await BankInstruction.insertMany([
-    {
-      label: 'USD domestic wire / ACH',
-      accountName: 'Aurivest Securities LLC — Client Funds',
-      bankName: 'First Meridian Trust',
-      accountNumber: '4402117836',
-      routingNumber: '021000021',
-      swiftCode: 'FMTRUS33',
-      bankAddress: '400 Lexington Avenue, New York, NY 10017, United States',
-      beneficiaryAddress: 'Aurivest Securities LLC, 1 Bay Plaza, Suite 900, New York, NY 10004',
-      currency: 'USD',
-      notes: 'Include your reference in the wire memo so the credit can be matched to your account.',
-      sortOrder: 0,
-    },
-    {
-      label: 'International SWIFT',
-      accountName: 'Aurivest Securities LLC — Client Funds',
-      bankName: 'First Meridian Trust',
-      accountNumber: 'GB29FMTR60161331926819',
-      routingNumber: '',
-      swiftCode: 'FMTRGB2L',
-      bankAddress: '18 Threadneedle Street, London EC2R 8AR, United Kingdom',
-      beneficiaryAddress: 'Aurivest Securities LLC, 1 Bay Plaza, Suite 900, New York, NY 10004',
-      currency: 'USD',
-      notes: 'Correspondent charges are shared (SHA). Allow two to four business days.',
-      sortOrder: 1,
-    },
-  ]);
-  console.log('🏦 Seeded receiving-wire instructions');
+/* Ambiguous characters removed so the password survives being read aloud. */
+function strongPassword(len = 20) {
+  const set = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+  return Array.from(crypto.randomFillSync(new Uint32Array(len)))
+    .map((n) => set[n % set.length])
+    .join('');
 }
 
-async function run() {
-  await connectDB();
-  await seedBankInstructions();
+async function seedWallets() {
+  if (await Wallet.countDocuments()) {
+    console.log('↷ Wallets already present — edit them in the admin panel');
+    return;
+  }
+  await Wallet.insertMany(DEFAULT_WALLETS);
+  console.log(`₿ Seeded ${DEFAULT_WALLETS.length} placeholder receiving wallets — replace the addresses in the admin panel`);
+}
 
-  const reset = process.argv.includes('--reset');
+async function seedAdmin(force) {
+  let admin = await User.findOne({ email: ADMIN_EMAIL });
+  const password = process.env.ADMIN_PASSWORD || strongPassword();
+
+  if (admin && !force) {
+    console.log(`↷ Admin ${ADMIN_EMAIL} already exists — pass --admin to reset the password`);
+    return null;
+  }
+  if (admin) {
+    admin.password = password;          // pre-save hook hashes it
+    admin.role = 'admin';
+    admin.isActive = true;
+    await admin.save();
+    return { email: ADMIN_EMAIL, password, reset: true };
+  }
+
+  admin = await User.create({
+    name: process.env.ADMIN_NAME || 'Aurivest Administrator',
+    email: ADMIN_EMAIL,
+    password,
+    role: 'admin',
+    emailVerified: true,
+    kyc: { status: 'verified' },
+  });
+  return { email: ADMIN_EMAIL, password, reset: false };
+}
+
+async function seedDemo(reset) {
   let user = await User.findOne({ email: DEMO_EMAIL });
 
   if (user && reset) {
@@ -75,10 +89,9 @@ async function run() {
     user = null;
     console.log('🧹 Cleared the previous demo client');
   }
-
   if (user) {
-    console.log(`✔ ${DEMO_EMAIL} already exists — pass --reset to rebuild it`);
-    return mongoose.connection.close();
+    console.log(`↷ ${DEMO_EMAIL} already exists — pass --reset-demo to rebuild`);
+    return;
   }
 
   user = await User.create({
@@ -89,17 +102,10 @@ async function run() {
     country: 'United States',
     emailVerified: true,
     kyc: { status: 'verified', submittedAt: daysAgo(40), reviewedAt: daysAgo(39), documentType: 'passport' },
-    bankAccount: {
-      accountName: 'Alexandra Reyes',
-      bankName: 'Pacific Union Bank',
-      accountNumber: '8820114937',
-      routingNumber: '121000358',
-      swiftCode: 'PACUUS6S',
-      bankAddress: '55 Market Street, San Francisco, CA 94105, United States',
-      homeAddress: '1420 Sansome Street, Apt 6B, San Francisco, CA 94111',
-      currency: 'USD',
-      verified: true,
-      updatedAt: daysAgo(38),
+    payout: {
+      asset: 'USDT', network: 'TRC-20',
+      address: 'TJRyWwFs9wTFGZg3JbrVriFbNfCug5tDeC',
+      label: 'Main payout wallet', verified: true, updatedAt: daysAgo(38),
     },
     profitBalance: 2140.85,
   });
@@ -136,9 +142,9 @@ async function run() {
     { type: 'interest', label: 'Monthly interest', detail: 'Cash Management · 4.65% APY', amount: 186.4, account: cash._id, at: 2 },
     { type: 'trade', label: 'Buy NVDA', detail: '12.000000 units at $138.25', amount: -1659, account: cash._id, at: 4 },
     { type: 'dividend', label: 'VOO distribution', detail: 'Quarterly dividend', amount: 214.8, account: brokerage._id, at: 9 },
-    { type: 'deposit', label: 'Deposit received', detail: 'Bank wire → Cash Management', amount: 25000, account: cash._id, at: 14 },
+    { type: 'deposit', label: 'Deposit received', detail: 'USDT · TRC-20', amount: 25000, account: cash._id, at: 14 },
+    { type: 'deposit', label: 'Deposit received', detail: 'BTC · Bitcoin', amount: 40000, account: cash._id, at: 96 },
     { type: 'investment', label: 'Private Credit', detail: 'Higher-Yield Add-Ons · funded from Cash Management', amount: -25000, account: cash._id, at: 120 },
-    { type: 'trade', label: 'Buy BTC', detail: '0.420000 units at $57,380.95', amount: -24100, account: cash._id, at: 180 },
     { type: 'referral', label: 'Referral reward', detail: 'Mira Solberg opened an account', amount: 100, account: cash._id, at: 30 },
   ];
   await Transaction.insertMany(tx.map((t) => ({
@@ -147,6 +153,27 @@ async function run() {
   })));
 
   console.log(`✅ Seeded ${DEMO_EMAIL} with an investment book`);
+}
+
+async function run() {
+  await connectDB();
+  const arg = (f) => process.argv.includes(f);
+
+  await seedWallets();
+  const admin = await seedAdmin(arg('--admin'));
+  if (arg('--demo') || arg('--reset-demo')) await seedDemo(arg('--reset-demo'));
+
+  if (admin) {
+    console.log('\n' + '═'.repeat(58));
+    console.log(admin.reset ? '  ADMIN PASSWORD RESET' : '  ADMINISTRATOR CREATED');
+    console.log('═'.repeat(58));
+    console.log(`  Email     ${admin.email}`);
+    console.log(`  Password  ${admin.password}`);
+    console.log('═'.repeat(58));
+    console.log('  Shown once. Store it in a password manager and change');
+    console.log('  it after the first sign-in.\n');
+  }
+
   await mongoose.connection.close();
 }
 

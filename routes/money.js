@@ -1,7 +1,7 @@
 const express = require('express');
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
-const PaymentMethod = require('../models/PaymentMethod');
+const Wallet = require('../models/Wallet');
 const { protect, kycSubmitted, kycVerified } = require('../middleware/auth');
 const { round2, credit, debit, primaryAccount } = require('../utils/banking');
 const { getSettings } = require('../config/settings');
@@ -47,23 +47,6 @@ function fail(res, err, context) {
   return res.status(500).json({ message: 'Server error' });
 }
 
-/* Shared: the funding rails an admin has enabled for this direction. */
-function methodsHandler(scope) {
-  return async (req, res) => {
-    try {
-      const methods = await PaymentMethod.find({
-        isActive: true,
-        scope: { $in: [scope, 'both'] },
-      }).sort({ sortOrder: 1, createdAt: 1 }).lean();
-      res.json(methods);
-    } catch (err) {
-      fail(res, err, 'Methods');
-    }
-  };
-}
-
-deposits.get('/methods', protect, methodsHandler('deposit'));
-withdrawals.get('/methods', protect, methodsHandler('withdraw'));
 
 /* ============================================================
    POST /api/deposits
@@ -72,7 +55,7 @@ withdrawals.get('/methods', protect, methodsHandler('withdraw'));
    ============================================================ */
 deposits.post('/', protect, kycSubmitted, async (req, res) => {
   try {
-    const { amount, method = 'Linked bank', accountId, proof } = req.body;
+    const { amount, walletId, txHash, accountId, proof } = req.body;
     const settings = await getSettings();
     const value = round2(amount);
 
@@ -81,7 +64,14 @@ deposits.post('/', protect, kycSubmitted, async (req, res) => {
     }
 
     const account = await resolveAccount(req.user, accountId);
-    const autoClear = settings.autoApproveDepositUnder > 0 && value < settings.autoApproveDepositUnder;
+    const wallet = walletId ? await Wallet.findById(walletId) : null;
+    const method = wallet ? `${wallet.asset} · ${wallet.network}` : 'Crypto transfer';
+    if (!txHash || String(txHash).trim().length < 10) {
+      return res.status(400).json({ message: 'Paste the transaction hash so we can verify the transfer on-chain.' });
+    }
+
+    // On-chain credits are never auto-approved: the hash has to be checked.
+    const autoClear = false;
 
     if (autoClear) {
       await credit(account, value, {
@@ -89,6 +79,7 @@ deposits.post('/', protect, kycSubmitted, async (req, res) => {
         label: 'Deposit received',
         detail: `${method} → ${account.name}`,
         method,
+        reference: String(txHash).trim().slice(0, 120),
         proof: proof || null,
         proofUploadedAt: proof ? new Date() : null,
       });
@@ -128,16 +119,24 @@ deposits.post('/', protect, kycSubmitted, async (req, res) => {
    ============================================================ */
 withdrawals.post('/', protect, kycVerified, async (req, res) => {
   try {
-    const { amount, method = 'Bank transfer', destination, accountId } = req.body;
+    const { amount, accountId } = req.body;
     const settings = await getSettings();
     const value = round2(amount);
 
     if (!Number.isFinite(value) || value < settings.minWithdrawal) {
       return res.status(400).json({ message: `The minimum withdrawal is $${settings.minWithdrawal}.` });
     }
-    if (!destination || String(destination).length < 6) {
-      return res.status(400).json({ message: 'Enter the destination account number.' });
+    // Payouts only ever go to the address saved on the profile, never to
+    // one supplied in the request — that is the whole point of verifying it.
+    const payout = req.user.payout;
+    if (!payout?.address) {
+      return res.status(400).json({ message: 'Add a payout wallet in Settings before withdrawing.', code: 'NO_PAYOUT_WALLET' });
     }
+    if (!payout.verified) {
+      return res.status(403).json({ message: 'Your payout wallet is awaiting approval.', code: 'PAYOUT_UNVERIFIED' });
+    }
+    const method = `${payout.asset} · ${payout.network}`;
+    const destination = payout.address;
 
     const account = await resolveAccount(req.user, accountId);
 

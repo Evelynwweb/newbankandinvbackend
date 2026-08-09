@@ -4,9 +4,8 @@ const User = require('../models/User');
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
 const Investment = require('../models/Investment');
-const BankInstruction = require('../models/BankInstruction');
+const Wallet = require('../models/Wallet');
 const Holding = require('../models/Holding');
-const PaymentMethod = require('../models/PaymentMethod');
 const SupportMessage = require('../models/SupportMessage');
 const { protect, admin } = require('../middleware/auth');
 const sanitizeUser = require('../utils/sanitizeUser');
@@ -127,7 +126,9 @@ router.get('/users/:id', async (req, res) => {
     ]);
 
     res.json({
-      user: sanitizeUser(user),
+      // The desk needs the full payout address to actually send the funds —
+      // this is the one route where it is not masked.
+      user: { ...sanitizeUser(user), payout: user.payout?.address ? user.payout : null },
       accounts,
       transactions: transactions.map(({ proof, ...t }) => ({ ...t, hasProof: !!proof })),
       investments: investments.map((i) => ({ ...i, accrued: accruedOn(i) })),
@@ -546,52 +547,6 @@ router.get('/investments', async (req, res) => {
    Payment methods
    ============================================================ */
 
-router.get('/payment-methods', async (req, res) => {
-  try {
-    const rows = await PaymentMethod.find().sort({ sortOrder: 1, createdAt: 1 }).lean();
-    res.json(rows);
-  } catch (err) {
-    console.error('Payment methods error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.post('/payment-methods', async (req, res) => {
-  try {
-    const { label } = req.body;
-    if (!label) return res.status(400).json({ message: 'A label is required' });
-    const created = await PaymentMethod.create(req.body);
-    res.status(201).json(created);
-  } catch (err) {
-    console.error('Payment method create error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.patch('/payment-methods/:id', async (req, res) => {
-  try {
-    const updated = await PaymentMethod.findByIdAndUpdate(req.params.id, req.body, {
-      new: true, runValidators: true,
-    });
-    if (!updated) return res.status(404).json({ message: 'Method not found' });
-    res.json(updated);
-  } catch (err) {
-    console.error('Payment method update error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.delete('/payment-methods/:id', async (req, res) => {
-  try {
-    const removed = await PaymentMethod.findByIdAndDelete(req.params.id);
-    if (!removed) return res.status(404).json({ message: 'Method not found' });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Payment method delete error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 /* ============================================================
    Support
    ============================================================ */
@@ -648,49 +603,67 @@ router.patch('/support/:id', async (req, res) => {
 });
 
 /* ============================================================
-   Receiving wires — the inbound funding details clients are shown
+   Receiving wallets — the addresses clients deposit to
    ============================================================ */
 
-router.get('/bank-instructions', async (req, res) => {
+router.get('/wallets', async (req, res) => {
   try {
-    res.json(await BankInstruction.find().sort({ sortOrder: 1, createdAt: 1 }).lean());
+    res.json(await Wallet.find().sort({ sortOrder: 1, asset: 1 }).lean());
   } catch (err) {
-    console.error('Wires list error:', err);
+    console.error('Wallets list error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-router.post('/bank-instructions', async (req, res) => {
+router.post('/wallets', async (req, res) => {
   try {
-    const { label, accountName, bankName, accountNumber } = req.body;
-    if (!label || !accountName || !bankName || !accountNumber) {
-      return res.status(400).json({ message: 'Label, account name, bank name and account number are required.' });
+    const { asset, name, network, address } = req.body;
+    if (!asset || !name || !network || !address) {
+      return res.status(400).json({ message: 'Asset, name, network and address are all required.' });
     }
-    res.status(201).json(await BankInstruction.create(req.body));
+    res.status(201).json(await Wallet.create(req.body));
   } catch (err) {
-    console.error('Wire create error:', err);
+    if (err.code === 11000) {
+      return res.status(409).json({ message: 'A wallet already exists for that asset and network.' });
+    }
+    console.error('Wallet create error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-router.patch('/bank-instructions/:id', async (req, res) => {
+router.patch('/wallets/:id', async (req, res) => {
   try {
-    const updated = await BankInstruction.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!updated) return res.status(404).json({ message: 'Route not found' });
+    const updated = await Wallet.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!updated) return res.status(404).json({ message: 'Wallet not found' });
     res.json(updated);
   } catch (err) {
-    console.error('Wire update error:', err);
+    console.error('Wallet update error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-router.delete('/bank-instructions/:id', async (req, res) => {
+router.delete('/wallets/:id', async (req, res) => {
   try {
-    const removed = await BankInstruction.findByIdAndDelete(req.params.id);
-    if (!removed) return res.status(404).json({ message: 'Route not found' });
+    const removed = await Wallet.findByIdAndDelete(req.params.id);
+    if (!removed) return res.status(404).json({ message: 'Wallet not found' });
     res.json({ ok: true });
   } catch (err) {
-    console.error('Wire delete error:', err);
+    console.error('Wallet delete error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/* Approve or reject a client's payout wallet before the first withdrawal. */
+router.post('/users/:id/payout/verify', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'Client not found' });
+    if (!user.payout?.address) return res.status(400).json({ message: 'That client has no payout wallet saved.' });
+    user.payout.verified = !!req.body.approve;
+    await user.save();
+    res.json(sanitizeUser(user));
+  } catch (err) {
+    console.error('Payout verify error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

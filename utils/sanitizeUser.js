@@ -20,19 +20,16 @@ module.exports = function sanitizeUser(user) {
       documentType: user.kyc?.documentType || null,
       rejectionReason: user.kyc?.rejectionReason || null,
     },
-    bankAccount: user.bankAccount?.accountNumber
+    payout: user.payout?.address
       ? {
-          accountName: user.bankAccount.accountName,
-          bankName: user.bankAccount.bankName,
-          // Only the tail ever leaves the server.
-          accountNumberLast4: String(user.bankAccount.accountNumber).slice(-4),
-          routingNumber: user.bankAccount.routingNumber,
-          swiftCode: user.bankAccount.swiftCode,
-          bankAddress: user.bankAccount.bankAddress,
-          homeAddress: user.bankAccount.homeAddress,
-          currency: user.bankAccount.currency,
-          verified: !!user.bankAccount.verified,
-          updatedAt: user.bankAccount.updatedAt || null,
+          asset: user.payout.asset,
+          network: user.payout.network,
+          // Only the ends of the address leave the server.
+          addressMasked: String(user.payout.address).slice(0, 6) + '…' + String(user.payout.address).slice(-6),
+          memo: user.payout.memo,
+          label: user.payout.label,
+          verified: !!user.payout.verified,
+          updatedAt: user.payout.updatedAt || null,
         }
       : null,
     settings: user.settings,

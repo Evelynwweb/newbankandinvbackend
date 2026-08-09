@@ -5,7 +5,7 @@ const Transaction = require('../models/Transaction');
 const Investment = require('../models/Investment');
 const Holding = require('../models/Holding');
 const { protect } = require('../middleware/auth');
-const { round2 } = require('../utils/banking');
+const { round2, accruedOn: accruedOnLocal } = require('../utils/banking');
 const { getSettings } = require('../config/settings');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -63,7 +63,8 @@ router.get('/overview', protect, async (req, res) => {
     ]);
 
     const byKind = (k) => accounts.find((a) => a.kind === k);
-    const accountValue = round2(accounts.reduce((s, a) => s + a.balance, 0));
+    const holdingsValue = holdings.reduce((s, h) => s + h.units * h.price, 0);
+    const accountValue = round2(accounts.reduce((s, a) => s + a.balance, 0) + holdingsValue);
     const profitBalance = round2(req.user.profitBalance || 0);
 
     const performance = {};
@@ -86,12 +87,30 @@ router.get('/overview', protect, async (req, res) => {
       }))
       .filter((h) => h.value > 0);
 
+    /* The three figures the overview leads with. Deposits and profit are
+       summed from the ledger so they always reconcile with Activity. */
+    const completed = await Transaction.find({ user: userId, status: 'completed' })
+      .select('type amount').lean();
+    const totalDeposits = round2(
+      completed.filter((t) => t.type === 'deposit' && t.amount > 0).reduce((s, t) => s + t.amount, 0)
+    );
+    const totalProfit = round2(
+      completed.filter((t) => ['interest', 'dividend'].includes(t.type) && t.amount > 0)
+        .reduce((s, t) => s + t.amount, 0)
+      + (req.user.profitBalance || 0)
+      + investments.reduce((s, i) => s + accruedOnLocal(i), 0)
+    );
+    const totalInvestment = round2(investments.reduce((s, i) => s + i.principal, 0) + holdingsValue);
+
     res.json({
+      totalProfit,
+      totalDeposits,
+      totalInvestment,
       accountValue,
       balance: round2(byKind('cash')?.balance || 0),
       brokerageBalance: round2(byKind('brokerage')?.balance || 0),
       retirementBalance: round2(byKind('retirement')?.balance || 0),
-      holdingsValue: round2(holdings.reduce((s, h) => s + h.units * h.price, 0)),
+      holdingsValue: round2(holdingsValue),
       profitBalance,
       totalInvested: round2(investments.reduce((s, i) => s + i.principal, 0)),
       activeInvestments: investments.length,

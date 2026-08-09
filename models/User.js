@@ -22,19 +22,16 @@ const kycSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/* The client's own bank account — where withdrawals are sent. This is the
-   outbound half of the platform's only banking surface; the inbound half is
-   models/BankInstruction.js. Verified by an admin before the first payout. */
-const bankAccountSchema = new mongoose.Schema(
+/* Where withdrawals are sent. Crypto only — the platform does not pay
+   out to bank rails. Editing it clears `verified`, so an admin has to
+   re-approve before the next payout leaves. */
+const payoutSchema = new mongoose.Schema(
   {
-    accountName: { type: String, default: '', trim: true },
-    bankName: { type: String, default: '', trim: true },
-    accountNumber: { type: String, default: '', trim: true },
-    routingNumber: { type: String, default: '', trim: true },
-    swiftCode: { type: String, default: '', trim: true, uppercase: true },
-    bankAddress: { type: String, default: '', trim: true },
-    homeAddress: { type: String, default: '', trim: true },
-    currency: { type: String, default: 'USD', uppercase: true, trim: true },
+    asset: { type: String, default: '', trim: true, uppercase: true },
+    network: { type: String, default: '', trim: true },
+    address: { type: String, default: '', trim: true },
+    memo: { type: String, default: '', trim: true },
+    label: { type: String, default: '', trim: true },
     verified: { type: Boolean, default: false },
     updatedAt: { type: Date, default: null },
   },
@@ -80,7 +77,7 @@ const userSchema = new mongoose.Schema(
     referralRewarded: { type: Boolean, default: false },
 
     kyc: { type: kycSchema, default: () => ({}) },
-    bankAccount: { type: bankAccountSchema, default: () => ({}) },
+    payout: { type: payoutSchema, default: () => ({}) },
     settings: { type: settingsSchema, default: () => ({}) },
   },
   { timestamps: true }

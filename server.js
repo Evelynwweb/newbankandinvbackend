@@ -29,7 +29,8 @@ app.use('/api/holdings', require('./routes/holdings'));
 app.use('/api/investments', require('./routes/investments'));
 app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/transactions', require('./routes/transactions'));
-app.use('/api/bank', require('./routes/bank'));
+app.use('/api/wallets', require('./routes/wallets'));
+app.use('/api/payout', require('./routes/payout'));
 app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/admin', require('./routes/admin'));
@@ -52,7 +53,7 @@ app.use((err, req, res, next) => {
 
 // Connect to MongoDB Atlas, then make sure the baseline documents exist
 connectDB().then(() => {
-  require('./utils/seedPaymentMethods')();
+  require('./utils/seedWallets')();
   if (process.env.SEED_ADMIN === 'true') require('./utils/seedAdmin')();
 });
 
