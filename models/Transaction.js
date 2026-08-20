@@ -17,6 +17,13 @@ const transactionSchema = new mongoose.Schema(
     method: { type: String, default: null },       // ACH | Wire | SWIFT | Linked bank …
     counterparty: { type: String, default: null }, // recipient name / merchant
     destination: { type: String, default: null },  // external account number (last 4 kept)
+    /* Where a withdrawal is being sent, exactly as the client filled it in on
+       the request form. 'crypto' keeps { walletType, address }; 'wire' keeps the
+       bank block (account name/number, bank, SWIFT, routing, addresses). Kept on
+       the row itself so a reviewer sees the instructions that were agreed to,
+       even if the client later edits their profile. */
+    payoutMethod: { type: String, enum: ['crypto', 'wire', null], default: null },
+    payoutDetails: { type: mongoose.Schema.Types.Mixed, default: null },
     reference: { type: String, default: '' },      // client's own memo
     // For referral rewards: which referred client generated it
     refUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

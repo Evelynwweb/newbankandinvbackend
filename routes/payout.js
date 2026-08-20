@@ -4,7 +4,8 @@ const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const sanitizeUser = require('../utils/sanitizeUser');
 
-/* The client's crypto payout address — where withdrawals are sent. */
+/* The client's crypto payout address, kept on file and verified ahead of
+   time. The destination of any given withdrawal comes in on the request. */
 
 // @route   GET /api/payout
 router.get('/', protect, (req, res) => res.json(sanitizeUser(req.user).payout));

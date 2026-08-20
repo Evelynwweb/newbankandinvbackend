@@ -22,9 +22,10 @@ const kycSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/* Where withdrawals are sent. Crypto only — the platform does not pay
-   out to bank rails. Editing it clears `verified`, so an admin has to
-   re-approve before the next payout leaves. */
+/* A crypto address the client keeps on file. Withdrawals carry their own
+   destination on the request (see routes/money.js — crypto or wire), so this
+   is a saved reference rather than the payout of record. Editing it clears
+   `verified`, so an admin has to re-approve it. */
 const payoutSchema = new mongoose.Schema(
   {
     asset: { type: String, default: '', trim: true, uppercase: true },
