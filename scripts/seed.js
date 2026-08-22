@@ -25,8 +25,8 @@ const { INSTRUMENTS, DEFAULT_WALLETS } = require('../config/constants');
    anywhere but the hashed field. Copy it when you see it.
    ============================================================ */
 
-const DEMO_EMAIL = 'demo@aurivest.com';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@aurivest.com';
+const DEMO_EMAIL = 'demo@betamentmgt.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'info@betamentmgt.com';
 const daysAgo = (n) => new Date(Date.now() - n * 86400000);
 const daysAhead = (n) => new Date(Date.now() + n * 86400000);
 
@@ -64,7 +64,7 @@ async function seedAdmin(force) {
   }
 
   admin = await User.create({
-    name: process.env.ADMIN_NAME || 'Aurivest Administrator',
+    name: process.env.ADMIN_NAME || 'Betament Administrator',
     email: ADMIN_EMAIL,
     password,
     role: 'admin',

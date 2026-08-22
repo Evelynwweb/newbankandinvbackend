@@ -12,7 +12,7 @@ const settingSchema = new mongoose.Schema(
     referralReward: { type: Number, default: REFERRAL_REWARD, min: 0 },
     // Deposits below this clear automatically; at or above it an admin must approve.
     autoApproveDepositUnder: { type: Number, default: 0, min: 0 },
-    supportEmail: { type: String, default: 'support@aurivest.com' },
+    supportEmail: { type: String, default: 'support@betamentmgt.com' },
   },
   { timestamps: true }
 );

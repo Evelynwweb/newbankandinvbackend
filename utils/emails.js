@@ -17,21 +17,21 @@ const last4 = (s) => `••••${String(s || '').slice(-4)}`;
 exports.welcomeEmail = (user) =>
   sendMail({
     to: user.email,
-    subject: 'Your Aurivest account is open',
+    subject: 'Your Betament account is open',
     preheader: 'Welcome aboard — your accounts are ready.',
-    heading: `Welcome to Aurivest, ${first(user)}!`,
+    heading: `Welcome to Betament, ${first(user)}!`,
     intro: 'Your cash, brokerage and retirement accounts are open and ready to fund. Cash Management earns 4.65% from the day money lands in it.',
     content: button('Open my dashboard', dash),
-    outro: 'If you did not open an Aurivest account, contact us immediately.',
+    outro: 'If you did not open an Betament account, contact us immediately.',
   });
 
 exports.loginAlertEmail = (user, { when = new Date(), ip } = {}) =>
   sendMail({
     to: user.email,
-    subject: 'New sign-in to your Aurivest account',
+    subject: 'New sign-in to your Betament account',
     preheader: `Your account was signed in on ${fmtDate(when)}.`,
     heading: 'New sign-in detected',
-    intro: `Hi ${first(user)}, your Aurivest account was just signed in. If this was you, there's nothing to do.`,
+    intro: `Hi ${first(user)}, your Betament account was just signed in. If this was you, there's nothing to do.`,
     content: detailTable([
       ['Time', fmtDate(when)],
       ['IP address', ip || 'Unavailable'],
@@ -43,10 +43,10 @@ exports.loginAlertEmail = (user, { when = new Date(), ip } = {}) =>
 exports.passwordChangedEmail = (user) =>
   sendMail({
     to: user.email,
-    subject: 'Your Aurivest password was changed',
+    subject: 'Your Betament password was changed',
     preheader: 'Confirming a password change on your account.',
     heading: 'Password changed',
-    intro: `Hi ${first(user)}, the password on your Aurivest account was just changed.`,
+    intro: `Hi ${first(user)}, the password on your Betament account was just changed.`,
     content: detailTable([['Time', fmtDate()], ['Account', user.email]]),
     outro: 'If this wasn\'t you, contact us immediately — your account may be compromised.',
   });
@@ -159,9 +159,9 @@ exports.referralRewardEmail = (user, { amount, referredName }) =>
   sendMail({
     to: user.email,
     subject: `You earned ${fmt(amount)} from a referral`,
-    preheader: `${referredName} joined Aurivest.`,
+    preheader: `${referredName} joined Betament.`,
     heading: 'Referral reward credited',
-    intro: `Hi ${first(user)}, ${referredName} opened and funded an Aurivest account using your link.`,
+    intro: `Hi ${first(user)}, ${referredName} opened and funded an Betament account using your link.`,
     content: detailTable([['Reward', fmt(amount)], ['Referred', referredName], ['Time', fmtDate()]])
       + button('View referrals', `${dash}/referrals`),
   });
@@ -170,7 +170,7 @@ exports.supportReplyEmail = (user, { subject, reply }) =>
   sendMail({
     to: user.email,
     subject: `Re: ${subject}`,
-    preheader: 'A reply from the Aurivest support desk.',
+    preheader: 'A reply from the Betament support desk.',
     heading: 'Reply from support',
     intro: `Hi ${first(user)}, here's the answer to your question.`,
     content: `<p style="margin:22px 0;padding:16px;border-radius:12px;background:rgba(245,158,11,0.08);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#FFF7EC;text-align:left;">${reply}</p>`,

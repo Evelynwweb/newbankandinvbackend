@@ -6,13 +6,13 @@ const nodemailer = require('nodemailer');
 
    Env:
      SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS
-     EMAIL_FROM   e.g. "Aurivest <no-reply@yourdomain.com>"
+     EMAIL_FROM   e.g. "Betament <no-reply@yourdomain.com>"
 
    Without SMTP config the mailer logs instead of sending, so
    local dev never breaks and no route ever fails on email.
    ============================================================ */
 
-const BRAND = 'Aurivest';
+const BRAND = 'Betament';
 const SITE_URL = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 
 const COLORS = {
@@ -108,7 +108,7 @@ function layout({ preheader = '', heading, intro, content = '', outro = '' }) {
         </td></tr>
         <tr><td style="padding:20px 32px;border-top:1px solid ${COLORS.line};text-align:center;">
           <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:${COLORS.mutedDim};">
-            &copy; ${new Date().getFullYear()} ${BRAND} Bank &amp; Trust. Deposits insured to the applicable statutory limit.<br>
+            &copy; ${new Date().getFullYear()} ${BRAND} Assets Management. Deposits insured to the applicable statutory limit.<br>
             Investment products are not deposits, are not insured, and may lose value.<br>
             We will never ask you for your password or a verification code.
           </p>
@@ -123,7 +123,7 @@ function layout({ preheader = '', heading, intro, content = '', outro = '' }) {
 async function sendMail({ to, subject, ...rest }) {
   try {
     await getTransport().sendMail({
-      from: process.env.EMAIL_FROM || `${BRAND} <no-reply@aurivest.com>`,
+      from: process.env.EMAIL_FROM || `${BRAND} <no-reply@betamentmgt.com>`,
       to,
       subject,
       html: layout(rest),

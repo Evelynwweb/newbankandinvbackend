@@ -15,7 +15,7 @@ app.use(express.json({ limit: '8mb' }));
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ message: 'Aurivest API is running' });
+  res.json({ message: 'Betament API is running' });
 });
 
 // Routes

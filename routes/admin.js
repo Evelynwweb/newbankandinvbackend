@@ -440,7 +440,7 @@ async function payReferralIfDue(client, adminId) {
     await credit(account, reward, {
       type: 'referral',
       label: 'Referral reward',
-      detail: `${client.name} joined Aurivest`,
+      detail: `${client.name} joined Betament`,
       refUser: client._id,
       reviewedAt: new Date(),
       reviewedBy: adminId,

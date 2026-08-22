@@ -1,7 +1,7 @@
 {
   "name": "invandbankbackend",
   "version": "1.0.0",
-  "description": "Backend API for Aurivest — banking and investment platform",
+  "description": "Backend API for Betament — banking and investment platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

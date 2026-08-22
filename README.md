@@ -1,6 +1,6 @@
-# Aurivest Backend
+# Betament Backend
 
-Node/Express + MongoDB API for the Aurivest banking and investment platform.
+Node/Express + MongoDB API for the Betament banking and investment platform.
 Serves both the client app (`invandbankfrontend`) and the admin panel (`invandbankadmin`).
 
 ## Running it
@@ -21,7 +21,7 @@ Seed a demo client with a realistic history:
 npm run seed
 ```
 
-That creates `demo@aurivest.com` / `demo1234` with three funded accounts, cards, mandates,
+That creates `demo@betamentmgt.com` / `demo1234` with three funded accounts, cards, mandates,
 a loan and a ledger. It refuses to run when `NODE_ENV=production`.
 
 ### Creating the first admin

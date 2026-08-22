@@ -1,7 +1,7 @@
 /* ============================================================
    Platform economics and product catalogue.
 
-   Aurivest is an investment platform. The only banking surface it
+   Betament is an investment platform. The only banking surface it
    keeps is the pair of wire-instruction blocks used to move cash in
    and out — see models/Wallet.js for receiving addresses and the
    client's own payout wallet on models/User.js. There are no cards,
